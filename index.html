@@ -489,6 +489,25 @@ function DayMap({ day, checks, editMode, onMovePin }) {
 function StopSheet({ initial, isNew, onSave, onDelete, onClose }) {
   const [s, setS] = useState(clone(initial));
   const set = (k, v) => setS((old) => ({ ...old, [k]: v }));
+  const [geo, setGeo] = useState("");
+  const lookupAddr = () => {
+    if (!s.addr) { setGeo("Bitte zuerst eine Adresse eingeben."); return; }
+    setGeo("Suche …");
+    const q = /new york|,\s*ny\b|brooklyn|queens|manhattan|bronx/i.test(s.addr) ? s.addr : s.addr + ", New York";
+    fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q))
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data[0]) {
+          const lat = Math.round(parseFloat(data[0].lat) * 1e5) / 1e5;
+          const lng = Math.round(parseFloat(data[0].lon) * 1e5) / 1e5;
+          setS((old) => ({ ...old, lat, lng }));
+          setGeo("✅ Gefunden — Pin wird beim Speichern gesetzt: " + data[0].display_name.split(",").slice(0, 3).join(","));
+        } else {
+          setGeo("❌ Nicht gefunden — Adresse präzisieren oder Pin auf der Karte ziehen.");
+        }
+      })
+      .catch(() => setGeo("⚠️ Keine Verbindung — Pin auf der Karte ziehen oder Koordinaten eintragen."));
+  };
   return (
     <React.Fragment>
       <div className="sheet-backdrop" onClick={onClose}></div>
@@ -505,7 +524,9 @@ function StopSheet({ initial, isNew, onSave, onDelete, onClose }) {
         <div className="field"><label>Name</label>
           <input value={s.name} onChange={(e) => set("name", e.target.value)} /></div>
         <div className="field"><label>Adresse</label>
-          <input value={s.addr} onChange={(e) => set("addr", e.target.value)} /></div>
+          <input value={s.addr} onChange={(e) => { set("addr", e.target.value); setGeo(""); }} />
+          <button className="mini-btn" style={{ marginTop: 7 }} onClick={lookupAddr}>📍 Adresse suchen &amp; Pin setzen</button>
+          {geo ? <p style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 0" }}>{geo}</p> : null}</div>
         <div className="field"><label>Notiz</label>
           <input value={s.note} onChange={(e) => set("note", e.target.value)} placeholder="z. B. vorab gebucht" /></div>
         <div className="field-row">
