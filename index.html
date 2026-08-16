@@ -191,6 +191,21 @@
   .leg-edit-head span { font-size: 12px; font-weight: 800; color: var(--muted); }
   .mini-btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 12.5px; font-weight: 700; color: var(--ink); }
 
+  /* KI-Screenshot-Import */
+  .ai-import {
+    margin: 14px 14px 0; padding: 12px; border: 1.5px dashed #cbd5e1; border-radius: 14px;
+    background: #fafaf8;
+  }
+  .ai-import-btn {
+    width: 100%; min-height: 48px; border: none; border-radius: 12px;
+    background: var(--ink); color: var(--taxi); font-size: 15px; font-weight: 800; font-family: inherit;
+  }
+  .ai-import-btn:disabled { opacity: 0.6; }
+  .ai-hint { font-size: 11.5px; color: var(--muted); text-align: center; margin: 8px 0 0; }
+  .ai-hint button { border: none; background: none; color: var(--ink); font-weight: 700; font-size: 11.5px; text-decoration: underline; padding: 0; }
+  .ai-status { list-style: none; margin: 10px 0 0; padding: 0; }
+  .ai-status li { font-size: 13px; font-weight: 600; color: #374151; padding: 3px 0; }
+
   .footer-note { text-align: center; font-size: 12px; color: var(--muted); padding: 0 20px 30px; }
 </style>
 </head>
@@ -413,6 +428,101 @@ function localToday() {
   return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
 }
 
+/* ───────────────── KI-Screenshot-Analyse (Claude Vision API) ──────────────── */
+const API_KEY_STORE = "nyc-trip-anthropic-key";
+
+const SPOT_SCHEMA = {
+  type: "object",
+  properties: {
+    found: { type: "boolean", description: "true, wenn ein konkreter Ort in New York City erkennbar ist" },
+    name: { type: "string", description: "Offizieller Name des Ortes" },
+    address: { type: "string", description: "Bekannteste Adresse in NYC: Hausnummer + Straße + Stadtteil" },
+    category: { type: "string", enum: ["food", "sight", "party", "sport", "event"] },
+    note: { type: "string", description: "Kurze deutsche Notiz, max. 12 Woerter, inkl. Preis falls im Bild sichtbar" },
+    lat: { type: "number", description: "Breitengrad des Ortes" },
+    lng: { type: "number", description: "Laengengrad des Ortes" }
+  },
+  required: ["found", "name", "address", "category", "note", "lat", "lng"],
+  additionalProperties: false
+};
+
+const AI_PROMPT = "Du siehst einen Screenshot aus einer Social-Media-App (z. B. TikTok oder Instagram) mit einem Tipp fuer New York City. " +
+  "Identifiziere den gezeigten Ort (Restaurant, Cafe, Bakery, Sehenswuerdigkeit, Bar, Aktivitaet). " +
+  "Gib den offiziellen Namen, die bekannteste Adresse in NYC, eine Kategorie, eine kurze deutsche Notiz " +
+  "(mit Preis, falls im Bild sichtbar, und was man dort holt/macht) sowie die ungefaehren Koordinaten an. " +
+  "Wenn kein konkreter NYC-Ort erkennbar ist, setze found auf false und lasse die anderen Felder leer bzw. 0.";
+
+function fileToResizedBase64(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, (maxDim || 1400) / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Bild konnte nicht gelesen werden")); };
+    img.src = url;
+  });
+}
+
+async function analyzeScreenshot(b64, apiKey) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: "claude-opus-5",
+      max_tokens: 16000,
+      output_config: {
+        effort: "low",
+        format: { type: "json_schema", schema: SPOT_SCHEMA }
+      },
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
+          { type: "text", text: AI_PROMPT }
+        ]
+      }]
+    })
+  });
+  if (!res.ok) {
+    let msg = "HTTP " + res.status;
+    try { const err = await res.json(); if (err && err.error && err.error.message) msg = err.error.message; } catch (e) {}
+    if (res.status === 401) msg = "API-Key ungueltig";
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  if (data.stop_reason === "refusal") throw new Error("Anfrage wurde abgelehnt");
+  const textBlock = (data.content || []).find((b) => b.type === "text");
+  if (!textBlock) throw new Error("Keine Antwort erhalten");
+  return JSON.parse(textBlock.text);
+}
+
+const inNYC = (lat, lng) => lat > 40.3 && lat < 41.1 && lng > -74.4 && lng < -73.5;
+
+async function geocodeNYC(addr) {
+  try {
+    const q = /new york|,\s*ny\b|brooklyn|queens|manhattan|bronx/i.test(addr) ? addr : addr + ", New York";
+    const res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q));
+    const data = await res.json();
+    if (data && data[0]) {
+      const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+      if (inNYC(lat, lng)) return { lat, lng };
+    }
+  } catch (e) {}
+  return null;
+}
+
 /* ───────────────────────── UI-Bausteine ───────────────────────────────────── */
 function LineBadge({ line }) {
   const bg = LINE_COLORS[line] || "#555";
@@ -626,6 +736,99 @@ function TransferSheet({ initial, onSave, onRemove, onClose }) {
   );
 }
 
+/* ─────────────── Screenshot-Import (KI) ──────────────────────────────────── */
+function ScreenshotImport({ apiKey, onNeedKey, onAdd, existingNames, onChangeKey }) {
+  const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef(null);
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    setBusy(true);
+    for (const file of files) {
+      const id = "st" + Date.now() + Math.floor(Math.random() * 1e6);
+      setItems((old) => [...old, { id, status: "⏳ Analysiere Screenshot …" }]);
+      const setStatus = (s) => setItems((old) => old.map((x) => (x.id === id ? { ...x, status: s } : x)));
+      try {
+        const b64 = await fileToResizedBase64(file);
+        setStatus("🤖 KI schaut sich das Bild an …");
+        const spot = await analyzeScreenshot(b64, apiKey);
+        if (!spot.found || !spot.name) { setStatus("❌ Kein konkreter NYC-Ort erkannt"); continue; }
+        if (existingNames().includes(spot.name.trim().toLowerCase())) {
+          setStatus("⏭️ „" + spot.name + "“ ist schon in den Tipps"); continue;
+        }
+        setStatus("📍 Suche Adresse: " + spot.name + " …");
+        let lat = spot.lat, lng = spot.lng;
+        const geo = await geocodeNYC(spot.address || spot.name);
+        if (geo) { lat = geo.lat; lng = geo.lng; }
+        if (!inNYC(lat, lng)) { lat = 40.7580; lng = -73.9855; }
+        onAdd({
+          id: "x" + Date.now() + Math.floor(Math.random() * 1e6),
+          time: "flexibel",
+          name: spot.name,
+          addr: spot.address || "",
+          cat: CATS[spot.category] ? spot.category : "sight",
+          note: spot.note || "Aus Screenshot ergänzt",
+          lat: Math.round(lat * 1e5) / 1e5,
+          lng: Math.round(lng * 1e5) / 1e5
+        });
+        setStatus("✅ „" + spot.name + "“ zu den Tipps hinzugefügt");
+      } catch (err) {
+        setStatus("⚠️ " + ((err && err.message) || "Fehler bei der Analyse"));
+      }
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="ai-import">
+      <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }}
+        onChange={handleFiles} />
+      <button className="ai-import-btn" disabled={busy}
+        onClick={() => { if (!apiKey) { onNeedKey(); } else { inputRef.current.click(); } }}>
+        {busy ? "Analysiere …" : "📸 Screenshot hochladen — KI ergänzt den Spot"}
+      </button>
+      {items.length > 0 && (
+        <ul className="ai-status">
+          {items.map((x) => <li key={x.id}>{x.status}</li>)}
+        </ul>
+      )}
+      <p className="ai-hint">
+        TikTok-/Insta-Screenshot auswählen, die KI erkennt den Ort und trägt ihn mit Adresse &amp; Pin ein.
+        Braucht Internet. <button onClick={onChangeKey}>{apiKey ? "API-Key ändern" : "API-Key einrichten"}</button>
+      </p>
+    </div>
+  );
+}
+
+function ApiKeySheet({ initial, onSave, onClose }) {
+  const [key, setKey] = useState(initial || "");
+  return (
+    <React.Fragment>
+      <div className="sheet-backdrop" onClick={onClose}></div>
+      <div className="sheet">
+        <h3>KI einrichten</h3>
+        <p style={{ fontSize: 13.5, color: "var(--muted)", margin: "0 0 12px" }}>
+          Für die Screenshot-Analyse braucht die App einen Anthropic-API-Key
+          (erstellen unter <b>console.anthropic.com</b> → API Keys). Der Key wird nur
+          auf diesem Gerät gespeichert und direkt an die Claude-API geschickt —
+          es gibt keinen Server dazwischen. Pro Screenshot fallen wenige Cent an.
+        </p>
+        <div className="field"><label>API-Key</label>
+          <input value={key} onChange={(e) => setKey(e.target.value)}
+            placeholder="sk-ant-…" autoCapitalize="off" autoCorrect="off" spellCheck="false" /></div>
+        <div className="sheet-actions">
+          {initial && <button className="btn danger" onClick={() => onSave("")}>🗑</button>}
+          <button className="btn ghost" onClick={onClose}>Abbrechen</button>
+          <button className="btn primary" onClick={() => onSave(key.trim())}>Speichern</button>
+        </div>
+      </div>
+    </React.Fragment>
+  );
+}
+
 /* ───────────────────────── App ────────────────────────────────────────────── */
 function App() {
   const stored = useMemo(loadStore, []);
@@ -648,6 +851,24 @@ function App() {
   });
   const [editMode, setEditMode] = useState(false);
   const [editing, setEditing] = useState(null); // {kind, dayIdx, idx, isNew}
+  const [apiKey, setApiKey] = useState(() => {
+    try { return localStorage.getItem(API_KEY_STORE) || ""; } catch (e) { return ""; }
+  });
+  const [showKeySheet, setShowKeySheet] = useState(false);
+
+  const saveApiKey = (k) => {
+    setApiKey(k);
+    try { k ? localStorage.setItem(API_KEY_STORE, k) : localStorage.removeItem(API_KEY_STORE); } catch (e) {}
+    setShowKeySheet(false);
+  };
+  const addTipStop = (stop) => updateDays((d) => {
+    const tips = d.find((x) => x.id === "tips");
+    if (tips) { tips.stops.push(stop); tips.transfers.push(null); }
+  });
+  const tipNames = () => {
+    const tips = days.find((x) => x.id === "tips");
+    return tips ? tips.stops.map((s) => (s.name || "").trim().toLowerCase()) : [];
+  };
 
   useEffect(() => { saveStore(days, checks); }, [days, checks]);
 
@@ -763,6 +984,14 @@ function App() {
         <DayMap key={day.id} day={day} checks={checks} editMode={editMode} onMovePin={movePin} />
         {editMode && <p className="edit-hint" style={{ paddingTop: 8 }}>Pins auf der Karte lassen sich per Ziehen verschieben.</p>}
 
+        {day.id === "tips" && (
+          <ScreenshotImport apiKey={apiKey}
+            onNeedKey={() => setShowKeySheet(true)}
+            onChangeKey={() => setShowKeySheet(true)}
+            onAdd={addTipStop}
+            existingNames={tipNames} />
+        )}
+
         <div className="timeline">
           {day.stops.map((s, i) => {
             const done = !!checks[s.id];
@@ -816,6 +1045,9 @@ function App() {
           initial={editing.isNew ? newStopTemplate : days[editing.dayIdx].stops[editing.idx]}
           isNew={!!editing.isNew}
           onSave={saveStop} onDelete={deleteStop} onClose={() => setEditing(null)} />
+      )}
+      {showKeySheet && (
+        <ApiKeySheet initial={apiKey} onSave={saveApiKey} onClose={() => setShowKeySheet(false)} />
       )}
       {editing && editing.kind === "transfer" && (
         <TransferSheet

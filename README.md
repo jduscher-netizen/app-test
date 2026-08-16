@@ -12,6 +12,7 @@ Alles in **einer Datei**: [`index.html`](index.html) — einfach im Browser öff
 - **Transfer-Blöcke** zwischen den Stops: Subway-Linien als runde Badges in den offiziellen MTA-Farben, Start-/Zielstation, Fahrtzeit bzw. „X Min zu Fuß“, inkl. Alternativen
 - **Checkboxen** je Stopp + Fortschrittsbalken pro Tag
 - **Bearbeiten-Modus**: Stops ändern/hinzufügen/löschen/verschieben, Verbindungen bearbeiten, Pins direkt auf der Karte ziehen (z. B. um die Rooftop-Party-Location am Sonntag einzutragen)
+- **KI-Screenshot-Import** im Tipps-Tab: TikTok-/Insta-Screenshot hochladen, Claude Vision erkennt den Ort und trägt ihn mit Adresse, Notiz und Karten-Pin ein (eigener Anthropic-API-Key nötig, wird nur auf dem Gerät gespeichert)
 - Häkchen & Änderungen bleiben auf dem Gerät gespeichert (localStorage); „Zurücksetzen“ im Edit-Modus
 
 ## Technik
