@@ -376,6 +376,18 @@ const DEFAULT_DAYS = [
       { legs:[{ type:"taxi", text:"Uber/Taxi: 60–90 Min" }],
         alt:"Alternativ: E ab 50 St bis Sutphin Blvd + AirTrain" }
     ]
+  },
+  {
+    id: "tips", date: "", wd: "★", wdLong: "Extras", dateLabel: "Tipps",
+    title: "Foodie- & Sightseeing-Tipps",
+    stops: [
+      { id:"t1", time:"flexibel", name:"Liberty Bagels", addr:"260 W 35th St, Midtown", cat:"food", note:"Rainbow Bagels — ca. 20 Min zu Fuß vom Hotel", lat:40.7522, lng:-73.9925 },
+      { id:"t2", time:"flexibel", name:"Magnolia Bakery", addr:"1240 6th Ave (Rockefeller Center)", cat:"food", note:"Banana Pudding — passt zu So (Top of the Rock)", lat:40.7600, lng:-73.9810 },
+      { id:"t3", time:"flexibel", name:"Glace New York", addr:"44 E 61st St, Upper East Side", cat:"food", note:"Cookie + Soft Serve — passt zu Di (Central Park)", lat:40.7647, lng:-73.9694 },
+      { id:"t4", time:"flexibel", name:"SUMMIT One Vanderbilt", addr:"45 E 42nd St (bei Grand Central)", cat:"sight", note:"$58, Zeitfenster-Ticket — Spiegel-Deck, passt zu Fr (Grand Central)", lat:40.7527, lng:-73.9787 },
+      { id:"t5", time:"flexibel", name:"Roosevelt Island Tramway", addr:"Tram Plaza, E 59th St / 2nd Ave", cat:"sight", note:"$2.90 mit OMNY — Skyline-Seilbahn, hin & zurück fahren", lat:40.7615, lng:-73.9641 }
+    ],
+    transfers: [ null, null, null, null, null ]
   }
 ];
 
@@ -617,7 +629,17 @@ function TransferSheet({ initial, onSave, onRemove, onClose }) {
 /* ───────────────────────── App ────────────────────────────────────────────── */
 function App() {
   const stored = useMemo(loadStore, []);
-  const [days, setDays] = useState(() => (stored && stored.days) ? stored.days : clone(DEFAULT_DAYS));
+  const [days, setDays] = useState(() => {
+    if (stored && stored.days) {
+      const d = stored.days;
+      // Migration: neue Standard-Tabs (z. B. "Tipps") auf Geräten mit altem Speicherstand ergänzen
+      DEFAULT_DAYS.forEach((def) => {
+        if (!d.some((x) => x.id === def.id)) d.push(clone(def));
+      });
+      return d;
+    }
+    return clone(DEFAULT_DAYS);
+  });
   const [checks, setChecks] = useState(() => (stored && stored.checks) ? stored.checks : {});
   const today = localToday();
   const [active, setActive] = useState(() => {
