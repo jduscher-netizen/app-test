@@ -924,6 +924,15 @@ function App() {
     return tips ? tips.stops.map((s) => (s.name || "").trim().toLowerCase()) : [];
   };
   const [moving, setMoving] = useState(null); // {idx} — Tipp-Index im Tipps-Tab
+  const [updating, setUpdating] = useState(false);
+
+  const forceUpdate = () => {
+    setUpdating(true);
+    // cache: "reload" erzwingt den Netz-Abruf und erneuert den HTTP-Cache dieser URL,
+    // danach lädt reload() die frische Version — auch in der Homescreen-App.
+    fetch(window.location.href, { cache: "reload" })
+      .finally(() => window.location.reload());
+  };
 
   const moveTipToDay = ({ dayId, pos, time, keepCopy }) => {
     const srcIdx = moving.idx;
@@ -1117,7 +1126,10 @@ function App() {
 
       <p className="footer-note">
         Häkchen & Änderungen werden auf diesem Gerät gespeichert. 🚕<br />
-        Version 6 · Tipps → Tagesplan + KI-Import
+        Version 7 · Tipps → Tagesplan + KI-Import<br />
+        <button className="mini-btn" style={{ marginTop: 8 }} disabled={updating} onClick={forceUpdate}>
+          {updating ? "Lade neueste Version …" : "↻ Auf Update prüfen"}
+        </button>
       </p>
 
       {editing && editing.kind === "stop" && (
