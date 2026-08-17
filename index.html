@@ -803,6 +803,60 @@ function ScreenshotImport({ apiKey, onNeedKey, onAdd, existingNames, onChangeKey
   );
 }
 
+/* ─────────────── Tipp in einen Tagesplan einfügen ─────────────────────────── */
+function MoveSheet({ stop, days, onSave, onClose }) {
+  const tripDays = days.filter((d) => d.id !== "tips");
+  const [dayId, setDayId] = useState(tripDays[0] ? tripDays[0].id : "");
+  const targetDay = tripDays.find((d) => d.id === dayId);
+  const [pos, setPos] = useState(targetDay ? targetDay.stops.length : 0);
+  const [time, setTime] = useState(stop.time === "flexibel" ? "ca. 12:00" : stop.time);
+  const [keepCopy, setKeepCopy] = useState(false);
+
+  const changeDay = (id) => {
+    setDayId(id);
+    const day = tripDays.find((d) => d.id === id);
+    setPos(day ? day.stops.length : 0);
+  };
+
+  return (
+    <React.Fragment>
+      <div className="sheet-backdrop" onClick={onClose}></div>
+      <div className="sheet">
+        <h3>„{stop.name}“ in Tagesplan einfügen</h3>
+        <div className="field"><label>Tag</label>
+          <select value={dayId} onChange={(e) => changeDay(e.target.value)}>
+            {tripDays.map((d) => (
+              <option key={d.id} value={d.id}>{d.wdLong} · {d.dateLabel} — {d.title}</option>
+            ))}
+          </select></div>
+        <div className="field"><label>Position im Ablauf</label>
+          <select value={pos} onChange={(e) => setPos(parseInt(e.target.value, 10))}>
+            {targetDay && Array.from({ length: targetDay.stops.length + 1 }, (_, i) => (
+              <option key={i} value={i}>
+                {i === 0
+                  ? "Ganz an den Anfang"
+                  : "Nach " + i + ". " + targetDay.stops[i - 1].name}
+              </option>
+            ))}
+          </select></div>
+        <div className="field"><label>Uhrzeit</label>
+          <input value={time} onChange={(e) => setTime(e.target.value)} placeholder="z. B. ca. 15:00" /></div>
+        <div className="field"><label>
+          <input type="checkbox" style={{ width: "auto", marginRight: 6 }} checked={keepCopy}
+            onChange={(e) => setKeepCopy(e.target.checked)} />
+          Kopie in den Tipps behalten</label></div>
+        <p style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0 0" }}>
+          Die Verbindung zum neuen Stopp wird als Platzhalter eingefügt — im Edit-Modus über ✏️ ergänzen.</p>
+        <div className="sheet-actions">
+          <button className="btn ghost" onClick={onClose}>Abbrechen</button>
+          <button className="btn primary" disabled={!targetDay}
+            onClick={() => onSave({ dayId, pos, time, keepCopy })}>Einfügen</button>
+        </div>
+      </div>
+    </React.Fragment>
+  );
+}
+
 function ApiKeySheet({ initial, onSave, onClose }) {
   const [key, setKey] = useState(initial || "");
   return (
@@ -868,6 +922,25 @@ function App() {
   const tipNames = () => {
     const tips = days.find((x) => x.id === "tips");
     return tips ? tips.stops.map((s) => (s.name || "").trim().toLowerCase()) : [];
+  };
+  const [moving, setMoving] = useState(null); // {idx} — Tipp-Index im Tipps-Tab
+
+  const moveTipToDay = ({ dayId, pos, time, keepCopy }) => {
+    const srcIdx = moving.idx;
+    const targetIdx = days.findIndex((x) => x.id === dayId);
+    updateDays((d) => {
+      const tips = d.find((x) => x.id === "tips");
+      const target = d.find((x) => x.id === dayId);
+      if (!tips || !target || !tips.stops[srcIdx]) return;
+      const stop = clone(tips.stops[srcIdx]);
+      stop.time = time || stop.time;
+      if (keepCopy) stop.id = "x" + Date.now() + Math.floor(Math.random() * 1e6);
+      target.stops.splice(pos, 0, stop);
+      target.transfers.splice(pos, 0, { legs: [{ type: "note", text: "Verbindung noch ergänzen" }] });
+      if (!keepCopy) { tips.stops.splice(srcIdx, 1); tips.transfers.splice(srcIdx, 1); }
+    });
+    setMoving(null);
+    if (targetIdx >= 0) setActive(targetIdx);
   };
 
   useEffect(() => { saveStore(days, checks); }, [days, checks]);
@@ -1015,7 +1088,13 @@ function App() {
                       <button className="tool-btn" onClick={() => moveStop(active, i, 1)}>↓</button>
                     </div>
                   ) : (
-                    <button className={"check" + (done ? " on" : "")} onClick={() => toggleCheck(s.id)} aria-label="abhaken">✓</button>
+                    <div className="row-tools">
+                      <button className={"check" + (done ? " on" : "")} onClick={() => toggleCheck(s.id)} aria-label="abhaken">✓</button>
+                      {day.id === "tips" && (
+                        <button className="tool-btn" onClick={() => setMoving({ idx: i })}
+                          aria-label="In Tagesplan einfügen">📅</button>
+                      )}
+                    </div>
                   )}
                 </div>
                 {editMode && (
@@ -1048,6 +1127,10 @@ function App() {
       )}
       {showKeySheet && (
         <ApiKeySheet initial={apiKey} onSave={saveApiKey} onClose={() => setShowKeySheet(false)} />
+      )}
+      {moving && days.find((x) => x.id === "tips") && days.find((x) => x.id === "tips").stops[moving.idx] && (
+        <MoveSheet stop={days.find((x) => x.id === "tips").stops[moving.idx]} days={days}
+          onSave={moveTipToDay} onClose={() => setMoving(null)} />
       )}
       {editing && editing.kind === "transfer" && (
         <TransferSheet
