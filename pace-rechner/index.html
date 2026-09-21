@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pace">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="description" content="Marathon Pace-Rechner: Minuten pro Kilometer in Zielzeiten für 5 km, 10 km, Halbmarathon und Marathon umrechnen – oder umgekehrt.">
+<title>Pace-Rechner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e8590c'/%3E%3Ctext x='32' y='42' font-family='system-ui,sans-serif' font-weight='700' font-size='28' fill='white' text-anchor='middle'%3E/km%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #15171c;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --accent: #e8590c;
+    --accent-soft: rgba(232, 89, 12, 0.10);
+    --input-bg: #f9fafb;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.06);
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115;
+      --card: #171a21;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --line: #262a33;
+      --accent: #ff7a2f;
+      --accent-soft: rgba(255, 122, 47, 0.14);
+      --input-bg: #0f1115;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --card: #171a21;
+    --text: #f3f4f6;
+    --muted: #9ca3af;
+    --line: #262a33;
+    --accent: #ff7a2f;
+    --accent-soft: rgba(255, 122, 47, 0.14);
+    --input-bg: #0f1115;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    min-height: 100vh;
+  }
+  main { max-width: 480px; margin: 0 auto; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; margin: 8px 0 16px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  header small { color: var(--muted); font-size: 13px; }
+
+  /* Mode switch */
+  .switch {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 4px; margin-bottom: 16px;
+  }
+  .switch button {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-weight: 600; font-size: 14px; padding: 10px 8px;
+    border-radius: 9px; cursor: pointer; transition: background .15s, color .15s;
+  }
+  .switch button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .label { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; }
+
+  /* Time inputs */
+  .time-row { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .time-row input {
+    width: 84px; height: 64px; text-align: center;
+    font: inherit; font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--text); background: var(--input-bg);
+    border: 1.5px solid var(--line); border-radius: 12px; outline: none;
+    -moz-appearance: textfield;
+  }
+  .time-row input::-webkit-outer-spin-button, .time-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .time-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .time-row .colon { font-size: 32px; font-weight: 700; color: var(--muted); }
+  .time-row .unit { font-size: 16px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+  .sub-labels { display: flex; justify-content: center; gap: 6px; margin-top: 6px; }
+  .sub-labels span { width: 84px; text-align: center; font-size: 12px; color: var(--muted); }
+  .sub-labels .gap { width: 14px; }
+
+  /* Stepper */
+  .stepper { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+  .stepper button {
+    appearance: none; font: inherit; font-weight: 600; font-size: 14px;
+    background: var(--accent-soft); color: var(--accent); border: 0;
+    border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  }
+  .stepper button:active { transform: scale(.97); }
+
+  /* Distance chips */
+  .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+  .chips button {
+    appearance: none; font: inherit; font-size: 13px; font-weight: 600;
+    background: var(--input-bg); color: var(--text);
+    border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 4px; cursor: pointer;
+  }
+  .chips button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .custom-km { display: none; align-items: center; justify-content: center; gap: 8px; margin: -4px 0 14px; }
+  .custom-km.show { display: flex; }
+  .custom-km input {
+    width: 110px; height: 44px; text-align: center; font: inherit; font-size: 18px; font-weight: 600;
+    color: var(--text); background: var(--input-bg); border: 1.5px solid var(--line); border-radius: 10px; outline: none;
+  }
+  .custom-km input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .custom-km span { color: var(--muted); font-weight: 600; }
+
+  /* Results */
+  .result-hero { text-align: center; padding: 6px 0 4px; }
+  .result-hero .big { font-size: 44px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--accent); line-height: 1.1; }
+  .result-hero .small { color: var(--muted); font-size: 14px; margin-top: 6px; }
+
+  .results { list-style: none; margin: 0; padding: 0; }
+  .results li {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 0; border-top: 1px solid var(--line);
+  }
+  .results li:first-child { border-top: 0; padding-top: 4px; }
+  .results li:last-child { padding-bottom: 4px; }
+  .results .name { font-weight: 600; }
+  .results .dist { display: block; font-size: 12px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .results .val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .results li.active .val { color: var(--accent); }
+
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 4px; }
+  .mode { display: none; }
+  .mode.show { display: block; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Pace-Rechner</h1>
+    <small>min/km ⇄ Zielzeit</small>
+  </header>
+
+  <div class="switch" role="tablist">
+    <button id="tab-pace" role="tab" aria-pressed="true" onclick="setMode('pace')">Pace → Zeiten</button>
+    <button id="tab-time" role="tab" aria-pressed="false" onclick="setMode('time')">Zielzeit → Pace</button>
+  </div>
+
+  <!-- ===== Modus 1: Pace eingeben ===== -->
+  <section id="mode-pace" class="mode show">
+    <div class="card">
+      <div class="label">Deine Pace</div>
+      <div class="time-row">
+        <input id="p-min" type="number" inputmode="numeric" min="0" max="59" placeholder="4" aria-label="Minuten">
+        <span class="colon">:</span>
+        <input id="p-sec" type="number" inputmode="numeric" min="0" max="59" placeholder="50" aria-label="Sekunden">
+        <span class="unit">/km</span>
+      </div>
+      <div class="sub-labels"><span>Min</span><span class="gap"></span><span>Sek</span></div>
+      <div class="stepper">
+        <button type="button" onclick="stepPace(-5)">−5 s</button>
+        <button type="button" onclick="stepPace(-1)">−1 s</button>
+        <button type="button" onclick="stepPace(1)">+1 s</button>
+        <button type="button" onclick="stepPace(5)">+5 s</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="result-hero">
+        <div class="big" id="p-speed">–</div>
+        <div class="small">km/h</div>
+      </div>
+      <ul class="results" id="p-results"></ul>
+    </div>
+  </section>
+
+  <!-- ===== Modus 2: Zielzeit eingeben ===== -->
+  <section id="mode-time" class="mode">
+    <div class="card">
+      <div class="label">Distanz</div>
+      <div class="chips" id="chips"></div>
+      <div class="custom-km" id="custom-km">
+        <input id="t-km" type="number" inputmode="decimal" min="0.1" step="0.1" placeholder="15" aria-label="Kilometer">
+        <span>km</span>
+      </div>
+
+      <div class="label">Zielzeit</div>
+      <div class="time-row">
+        <input id="t-h" type="number" inputmode="numeric" min="0" max="23" placeholder="3" aria-label="Stunden">
+        <span class="colon">:</span>
+        <input id="t-min" type="number" inputmode="numeric" min="0" max="59" placeholder="30" aria-label="Minuten">
+        <span class="colon">:</span>
+        <input id="t-sec" type="number" inputmode="numeric" min="0" max="59" placeholder="00" aria-label="Sekunden">
+      </div>
+      <div class="sub-labels"><span>Std</span><span class="gap"></span><span>Min</span><span class="gap"></span><span>Sek</span></div>
+    </div>
+
+    <div class="card">
+      <div class="result-hero">
+        <div class="big" id="t-pace">–</div>
+        <div class="small">min/km &nbsp;·&nbsp; <span id="t-speed">–</span> km/h</div>
+      </div>
+      <ul class="results" id="t-results"></ul>
+      <p class="hint">Zeiten bei gleicher Pace auf den anderen Distanzen</p>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  const DISTANCES = [
+    { key: '5k',  name: '5 km',         km: 5 },
+    { key: '10k', name: '10 km',        km: 10 },
+    { key: 'hm',  name: 'Halbmarathon', km: 21.0975 },
+    { key: 'm',   name: 'Marathon',     km: 42.195 },
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const num = (el) => { const v = parseFloat(el.value); return isNaN(v) ? 0 : v; };
+  const pad = (n) => String(n).padStart(2, '0');
+
+  /** Sekunden → "h:mm:ss" bzw. "mm:ss" */
+  function fmtTime(sec) {
+    sec = Math.round(sec);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+  /** Sekunden pro km → "m:ss" */
+  function fmtPace(secPerKm) {
+    secPerKm = Math.round(secPerKm);
+    return `${Math.floor(secPerKm / 60)}:${pad(secPerKm % 60)}`;
+  }
+  /** Exakte Distanz als Unterzeile – nur wenn sie nicht schon im Namen steckt */
+  function subDist(d) {
+    if (Number.isInteger(d.km)) return '';
+    return `<span class="dist">${d.km.toLocaleString('de-DE', { maximumFractionDigits: 4 })} km</span>`;
+  }
+  function fmtSpeed(kmh) {
+    return kmh.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+  // ---------- State ----------
+  let mode = 'pace';
+  let distKey = 'm';
+
+  function save() {
+    try {
+      localStorage.setItem('pace-rechner', JSON.stringify({
+        mode, distKey,
+        pMin: $('p-min').value, pSec: $('p-sec').value,
+        tH: $('t-h').value, tMin: $('t-min').value, tSec: $('t-sec').value, tKm: $('t-km').value,
+      }));
+    } catch (e) { /* Speicher nicht verfügbar – egal */ }
+  }
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem('pace-rechner') || 'null');
+      if (!s) return;
+      mode = s.mode || 'pace';
+      distKey = s.distKey || 'm';
+      $('p-min').value = s.pMin ?? ''; $('p-sec').value = s.pSec ?? '';
+      $('t-h').value = s.tH ?? ''; $('t-min').value = s.tMin ?? ''; $('t-sec').value = s.tSec ?? ''; $('t-km').value = s.tKm ?? '';
+    } catch (e) { /* ignorieren */ }
+  }
+
+  // ---------- Modus ----------
+  window.setMode = function (m) {
+    mode = m;
+    $('mode-pace').classList.toggle('show', m === 'pace');
+    $('mode-time').classList.toggle('show', m === 'time');
+    $('tab-pace').setAttribute('aria-pressed', m === 'pace');
+    $('tab-time').setAttribute('aria-pressed', m === 'time');
+    save();
+  };
+
+  // ---------- Modus 1: Pace → Zeiten ----------
+  function paceSeconds() {
+    return num($('p-min')) * 60 + num($('p-sec'));
+  }
+  window.stepPace = function (delta) {
+    let s = paceSeconds() + delta;
+    if (s < 60) s = 60;
+    $('p-min').value = Math.floor(s / 60);
+    $('p-sec').value = pad(s % 60);
+    renderPace();
+  };
+  function renderPace() {
+    const s = paceSeconds();
+    const ul = $('p-results');
+    if (s <= 0) {
+      $('p-speed').textContent = '–';
+      ul.innerHTML = DISTANCES.map(d =>
+        `<li><span class="name">${d.name}${subDist(d)}</span><span class="val">–</span></li>`).join('');
+      save();
+      return;
+    }
+    $('p-speed').textContent = fmtSpeed(3600 / s);
+    ul.innerHTML = DISTANCES.map(d =>
+      `<li><span class="name">${d.name}${subDist(d)}</span><span class="val">${fmtTime(d.km * s)}</span></li>`).join('');
+    save();
+  }
+
+  // ---------- Modus 2: Zielzeit → Pace ----------
+  function currentKm() {
+    if (distKey === 'custom') return num($('t-km'));
+    return DISTANCES.find(d => d.key === distKey).km;
+  }
+  function targetSeconds() {
+    return num($('t-h')) * 3600 + num($('t-min')) * 60 + num($('t-sec'));
+  }
+  function renderChips() {
+    const all = [...DISTANCES, { key: 'custom', name: 'Eigene', km: 0 }];
+    $('chips').innerHTML = all.map(d =>
+      `<button type="button" data-key="${d.key}" aria-pressed="${d.key === distKey}">${d.key === 'hm' ? 'Halb' : d.name}</button>`).join('');
+    $('chips').style.gridTemplateColumns = `repeat(${all.length}, 1fr)`;
+    $('custom-km').classList.toggle('show', distKey === 'custom');
+  }
+  function renderTime() {
+    const km = currentKm();
+    const t = targetSeconds();
+    const ul = $('t-results');
+    if (km <= 0 || t <= 0) {
+      $('t-pace').textContent = '–';
+      $('t-speed').textContent = '–';
+      ul.innerHTML = DISTANCES.map(d =>
+        `<li class="${d.key === distKey ? 'active' : ''}"><span class="name">${d.name}${subDist(d)}</span><span class="val">–</span></li>`).join('');
+      save();
+      return;
+    }
+    const secPerKm = t / km;
+    $('t-pace').textContent = fmtPace(secPerKm);
+    $('t-speed').textContent = fmtSpeed(km / (t / 3600));
+    ul.innerHTML = DISTANCES.map(d =>
+      `<li class="${d.key === distKey ? 'active' : ''}"><span class="name">${d.name}${subDist(d)}</span><span class="val">${fmtTime(d.km * secPerKm)}</span></li>`).join('');
+    save();
+  }
+
+  // ---------- Events ----------
+  ['p-min', 'p-sec'].forEach(id => $(id).addEventListener('input', renderPace));
+  ['t-h', 't-min', 't-sec', 't-km'].forEach(id => $(id).addEventListener('input', renderTime));
+
+  // Sekunden-Feld: bei 60+ auf Minuten übertragen
+  function clampSec(el, minEl) {
+    el.addEventListener('blur', () => {
+      let v = num(el);
+      if (v >= 60) { minEl.value = num(minEl) + Math.floor(v / 60); v = v % 60; }
+      if (el.value !== '') el.value = pad(Math.max(0, Math.round(v)));
+      el.dispatchEvent(new Event('input'));
+    });
+  }
+  clampSec($('p-sec'), $('p-min'));
+  clampSec($('t-sec'), $('t-min'));
+  clampSec($('t-min'), $('t-h'));
+
+  // Enter springt ins nächste Feld
+  document.querySelectorAll('.time-row input').forEach((el, i, all) => {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); (all[i + 1] || el).focus(); if (!all[i + 1]) el.blur(); }
+    });
+    el.addEventListener('focus', () => el.select());
+  });
+
+  $('chips').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-key]');
+    if (!b) return;
+    distKey = b.dataset.key;
+    renderChips();
+    if (distKey === 'custom') $('t-km').focus();
+    renderTime();
+  });
+
+  // ---------- Init ----------
+  load();
+  renderChips();
+  setMode(mode);
+  renderPace();
+  renderTime();
+})();
+</script>
+</body>
+</html>
